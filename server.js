@@ -2,9 +2,16 @@ import http from "http";
 import { WebSocketServer } from "ws";
 
 const server = http.createServer((req, res) => {
-  // 🔥 Render가 "HTTP 서버가 열려 있다"고 인식하게 하는 핵심
-  res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("coco-ping websocket server running");
+  // ✅ Render용 헬스 체크 (필수)
+  if (req.method === "GET" && req.url === "/") {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("coco ping server alive");
+    return;
+  }
+
+  // 나머지는 404
+  res.writeHead(404);
+  res.end();
 });
 
 const wss = new WebSocketServer({ server, path: "/ws" });
@@ -67,7 +74,7 @@ wss.on("connection", (ws) => {
   ws.on("close", () => leave(ws));
 });
 
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 8080;
 server.listen(PORT, "0.0.0.0", () => {
-  console.log("WS server listening on", PORT);
+  console.log("HTTP + WS server listening on", PORT);
 });
