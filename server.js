@@ -78,3 +78,12 @@ const PORT = process.env.PORT || 8080;
 server.listen(PORT, "0.0.0.0", () => {
   console.log("HTTP + WS server listening on", PORT);
 });
+
+wss.on("connection", (ws) => {
+  console.log("✅ client connected");
+
+  ws.on("message", (buf) => {
+    console.log("📩 recv:", buf.toString());
+    ...
+  });
+});
