@@ -1,23 +1,12 @@
 import http from "http";
 import { WebSocketServer } from "ws";
 
-const PORT = Number(process.env.PORT) || 8080;
-
-// ✅ Render 포트 스캔/헬스체크 대응: HTTP 응답 추가
 const server = http.createServer((req, res) => {
-  // 간단한 헬스체크 페이지
-  if (req.url === "/" || req.url === "/healthz") {
-    res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("coco-ping-server alive");
-    return;
-  }
-
-  // ws는 업그레이드 핸들링을 ws 라이브러리가 함
-  res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
-  res.end("not found");
+  // 🔥 Render가 "HTTP 서버가 열려 있다"고 인식하게 하는 핵심
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("coco-ping websocket server running");
 });
 
-// ✅ WebSocket 경로 유지
 const wss = new WebSocketServer({ server, path: "/ws" });
 
 // roomId -> Set<ws>
@@ -36,7 +25,6 @@ function leave(ws) {
   if (!set) return;
   set.delete(ws);
   if (set.size === 0) rooms.delete(roomId);
-  ws._roomId = null;
 }
 
 wss.on("connection", (ws) => {
@@ -48,7 +36,11 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    if (msg?.type !== "PING" || typeof msg.roomId !== "string" || !msg.payload) return;
+    if (
+      msg?.type !== "PING" ||
+      typeof msg.roomId !== "string" ||
+      !msg.payload
+    ) return;
 
     if (!ws._roomId) join(ws, msg.roomId);
     if (ws._roomId !== msg.roomId) {
@@ -66,15 +58,16 @@ wss.on("connection", (ws) => {
     });
 
     for (const client of set) {
-      if (client.readyState === 1) client.send(out);
+      if (client.readyState === 1) {
+        client.send(out);
+      }
     }
   });
 
   ws.on("close", () => leave(ws));
 });
 
-// ✅ Render에서 필수: PORT로 리슨 + 0.0.0.0 바인딩 권장
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, "0.0.0.0", () => {
-  console.log("HTTP+WS server listening on port", PORT);
-  console.log("WS path:", "/ws");
+  console.log("WS server listening on", PORT);
 });
