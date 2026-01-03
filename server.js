@@ -2,14 +2,12 @@ import http from "http";
 import { WebSocketServer } from "ws";
 
 const server = http.createServer((req, res) => {
-  // ✅ Render용 헬스 체크 (필수)
-  if (req.method === "GET" && req.url === "/") {
+  // Render 헬스체크/브라우저 확인용
+  if (req.url === "/" || req.url === "/health") {
     res.writeHead(200, { "Content-Type": "text/plain" });
-    res.end("coco ping server alive");
+    res.end("ok");
     return;
   }
-
-  // 나머지는 404
   res.writeHead(404);
   res.end();
 });
@@ -24,7 +22,6 @@ function join(ws, roomId) {
   rooms.get(roomId).add(ws);
   ws._roomId = roomId;
 }
-
 function leave(ws) {
   const roomId = ws._roomId;
   if (!roomId) return;
@@ -35,25 +32,17 @@ function leave(ws) {
 }
 
 wss.on("connection", (ws) => {
+  console.log("✅ client connected");
+
   ws.on("message", (buf) => {
     let msg;
-    try {
-      msg = JSON.parse(buf.toString());
-    } catch {
-      return;
-    }
+    try { msg = JSON.parse(buf.toString()); } catch { return; }
 
-    if (
-      msg?.type !== "PING" ||
-      typeof msg.roomId !== "string" ||
-      !msg.payload
-    ) return;
+    // {type:"PING", roomId:"...", payload:{wx,wy,ts,kind,clientId}}
+    if (msg?.type !== "PING" || typeof msg.roomId !== "string" || !msg.payload) return;
 
     if (!ws._roomId) join(ws, msg.roomId);
-    if (ws._roomId !== msg.roomId) {
-      leave(ws);
-      join(ws, msg.roomId);
-    }
+    if (ws._roomId !== msg.roomId) { leave(ws); join(ws, msg.roomId); }
 
     const set = rooms.get(ws._roomId);
     if (!set) return;
@@ -61,13 +50,11 @@ wss.on("connection", (ws) => {
     const out = JSON.stringify({
       type: "PING",
       roomId: msg.roomId,
-      payload: msg.payload,
+      payload: msg.payload
     });
 
     for (const client of set) {
-      if (client.readyState === 1) {
-        client.send(out);
-      }
+      if (client.readyState === 1) client.send(out);
     }
   });
 
@@ -75,15 +62,4 @@ wss.on("connection", (ws) => {
 });
 
 const PORT = process.env.PORT || 8080;
-server.listen(PORT, "0.0.0.0", () => {
-  console.log("HTTP + WS server listening on", PORT);
-});
-
-wss.on("connection", (ws) => {
-  console.log("✅ client connected");
-
-  ws.on("message", (buf) => {
-    console.log("📩 recv:", buf.toString());
-  
-  });
-});
+server.listen(PORT, () => console.log("HTTP + WS server listening on", PORT));
