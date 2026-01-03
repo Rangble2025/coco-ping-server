@@ -1,6 +1,7 @@
 /**
  * coco-ping-server (Render)
  * - 같은 roomId 안에서 PING 메시지를 모두에게 브로드캐스트
+ * - JOIN 메시지로 "접속자 수"를 미리 반영(핑 안 찍어도 방에 들어옴)
  * - /health 로 HTTP 헬스 체크 응답
  * - 로그를 자세히 찍어서 문제 지점 파악
  */
@@ -69,31 +70,47 @@ wss.on("connection", (ws, req) => {
     let msg;
     try {
       msg = JSON.parse(raw);
-    } catch (e) {
+    } catch {
       console.log(`❌ bad json id=${ws._id} raw=${raw.slice(0, 200)}`);
       return;
     }
 
-    // 기대 형태: {type:"PING", roomId, payload:{wx,wy,ts,kind,clientId}}
-    if (msg?.type !== "PING") {
-      console.log(`⚠️ ignore type id=${ws._id} type=${msg?.type}`);
-      return;
-    }
-    if (typeof msg.roomId !== "string" || !msg.roomId) {
-      console.log(`⚠️ ignore missing roomId id=${ws._id}`);
-      return;
-    }
-    if (!msg.payload || typeof msg.payload !== "object") {
-      console.log(`⚠️ ignore missing payload id=${ws._id} room=${msg.roomId}`);
+    // 공통 roomId 검증
+    const roomId = msg?.roomId;
+    if (typeof roomId !== "string" || !roomId) {
+      console.log(`⚠️ ignore missing roomId id=${ws._id} type=${msg?.type}`);
       return;
     }
 
-    // room join / switch
-    if (!ws._roomId) join(ws, msg.roomId);
-    if (ws._roomId !== msg.roomId) {
-      console.log(`🔁 switch room id=${ws._id} ${ws._roomId} -> ${msg.roomId}`);
+    // JOIN: 방 등록만 하고 끝(브로드캐스트 없음)
+    if (msg.type === "JOIN") {
+      if (!ws._roomId) join(ws, roomId);
+      if (ws._roomId !== roomId) {
+        console.log(`🔁 switch room id=${ws._id} ${ws._roomId} -> ${roomId}`);
+        leave(ws);
+        join(ws, roomId);
+      }
+      console.log(`👋 JOIN ok id=${ws._id} room=${roomId} size=${roomSize(roomId)}`);
+      return;
+    }
+
+    // PING: payload를 방 전체에 브로드캐스트
+    if (msg.type !== "PING") {
+      // 노이즈 타입은 조용히 무시(로그 스팸 방지)
+      return;
+    }
+
+    if (!msg.payload || typeof msg.payload !== "object") {
+      console.log(`⚠️ ignore missing payload id=${ws._id} room=${roomId}`);
+      return;
+    }
+
+    // 방 join / switch (PING만 보내도 자동 join 되게)
+    if (!ws._roomId) join(ws, roomId);
+    if (ws._roomId !== roomId) {
+      console.log(`🔁 switch room id=${ws._id} ${ws._roomId} -> ${roomId}`);
       leave(ws);
-      join(ws, msg.roomId);
+      join(ws, roomId);
     }
 
     const set = rooms.get(ws._roomId);
@@ -102,12 +119,12 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
-    const outObj = { type: "PING", roomId: msg.roomId, payload: msg.payload };
+    const outObj = { type: "PING", roomId, payload: msg.payload };
     const out = JSON.stringify(outObj);
 
     console.log(
-      `📨 recv PING id=${ws._id} room=${msg.roomId} size=${set.size} ` +
-        `payloadKeys=${Object.keys(msg.payload).join(",")}`
+      `📨 recv PING id=${ws._id} room=${roomId} size=${set.size} ` +
+      `payloadKeys=${Object.keys(msg.payload).join(",")}`
     );
 
     let sent = 0;
@@ -118,18 +135,16 @@ wss.on("connection", (ws, req) => {
       }
     }
 
-    console.log(`📤 broadcast room=${msg.roomId} sent=${sent}/${set.size}`);
+    console.log(`📤 broadcast room=${roomId} sent=${sent}/${set.size}`);
   });
 
   ws.on("close", (code, reason) => {
-    console.log(
-      `🛑 closed id=${ws._id} code=${code} reason=${reason?.toString?.() || ""}`
-    );
+    console.log(`🛑 closed id=${ws._id} code=${code} reason=${reason?.toString?.() || ""}`);
     leave(ws);
   });
 
-  ws.on("error", (err) => {
-    console.log(`💥 ws error id=${ws._id} err=${err?.message || err}`);
+  ws.on("error", (e) => {
+    console.log(`💥 ws error id=${ws._id} err=${e?.message || e}`);
   });
 });
 
