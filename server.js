@@ -66,7 +66,14 @@ wss.on("connection", (ws, req) => {
   console.log(`✅ connected id=${ws._id} ip=${ip}`);
 
   ws.on("message", (buf) => {
-    const raw = buf.toString();
+    const raw = buf.toString("utf8");
+    console.log("[WS] message:", s.slice(0, 300));
+    });
+    ws.on("close", (code, reason) => {
+    console.log("[WS] close", code, reason?.toString?.() || "");
+    });
+    ws.on("error", (e) => console.log("[WS] error", e));
+
     let msg;
     try {
       msg = JSON.parse(raw);
@@ -145,9 +152,24 @@ wss.on("connection", (ws, req) => {
 
   ws.on("error", (e) => {
     console.log(`💥 ws error id=${ws._id} err=${e?.message || e}`);
-  });
+  
 });
 
 server.listen(PORT, () => {
   console.log("HTTP + WS server listening on", PORT);
 });
+
+function heartbeat() { this.isAlive = true; }
+
+wss.on("connection", (ws) => {
+  ws.isAlive = true;
+  ws.on("pong", heartbeat);
+});
+
+setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) return ws.terminate();
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 25000);
