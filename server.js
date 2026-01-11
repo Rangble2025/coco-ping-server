@@ -3,7 +3,8 @@
  * - 같은 roomId 안에서 PING 메시지를 모두에게 브로드캐스트
  * - JOIN 메시지로 "접속자 수"를 미리 반영(핑 안 찍어도 방에 들어옴)
  * - /health 로 HTTP 헬스 체크 응답
- * - 로그를 자세히 찍어서 문제 지점 파악
+ * - 메시지 저장 없음(브로드캐스트만)
+ * - ping/pong 하트비트로 유령 연결 정리
  */
 
 import http from "http";
@@ -39,14 +40,16 @@ function leave(ws) {
   console.log(`⬅️ leave room=${roomId} size=${roomSize(roomId)}`);
 }
 
-/** HTTP (Render 포트/헬스 체크 대응) */
+/** HTTP (Render 헬스체크 대응) */
 const server = http.createServer((req, res) => {
   const url = req.url || "/";
+
   if (url === "/" || url === "/health") {
     res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("ok");
     return;
   }
+
   res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
   res.end("not found");
 });
@@ -54,7 +57,13 @@ const server = http.createServer((req, res) => {
 /** WebSocket (/ws) */
 const wss = new WebSocketServer({ server, path: "/ws" });
 
+/** pong 받으면 살아있다고 표시 */
+function heartbeat() {
+  this.isAlive = true;
+}
+
 wss.on("connection", (ws, req) => {
+  // 접속자 식별용(로그)
   const ip =
     req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() ||
     req.socket.remoteAddress ||
@@ -63,16 +72,17 @@ wss.on("connection", (ws, req) => {
   ws._ip = ip;
   ws._id = Math.random().toString(16).slice(2, 10);
 
+  // 하트비트 초기화
+  ws.isAlive = true;
+  ws.on("pong", heartbeat);
+
   console.log(`✅ connected id=${ws._id} ip=${ip}`);
 
   ws.on("message", (buf) => {
     const raw = buf.toString("utf8");
-    console.log("[WS] message:", s.slice(0, 300));
-    });
-    ws.on("close", (code, reason) => {
-    console.log("[WS] close", code, reason?.toString?.() || "");
-    });
-    ws.on("error", (e) => console.log("[WS] error", e));
+
+    // 로그가 너무 길어지는 걸 방지(앞부분만)
+    console.log("[WS] message:", raw.slice(0, 300));
 
     let msg;
     try {
@@ -82,14 +92,14 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
-    // 공통 roomId 검증
+    // roomId 검증
     const roomId = msg?.roomId;
     if (typeof roomId !== "string" || !roomId) {
       console.log(`⚠️ ignore missing roomId id=${ws._id} type=${msg?.type}`);
       return;
     }
 
-    // JOIN: 방 등록만 하고 끝(브로드캐스트 없음)
+    // JOIN: 방만 등록(브로드캐스트 없음)
     if (msg.type === "JOIN") {
       if (!ws._roomId) join(ws, roomId);
       if (ws._roomId !== roomId) {
@@ -101,18 +111,16 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
-    // PING: payload를 방 전체에 브로드캐스트
-    if (msg.type !== "PING") {
-      // 노이즈 타입은 조용히 무시(로그 스팸 방지)
-      return;
-    }
+    // PING만 처리 (다른 타입은 조용히 무시)
+    if (msg.type !== "PING") return;
 
+    // payload 검증
     if (!msg.payload || typeof msg.payload !== "object") {
       console.log(`⚠️ ignore missing payload id=${ws._id} room=${roomId}`);
       return;
     }
 
-    // 방 join / switch (PING만 보내도 자동 join 되게)
+    // PING만 보내도 자동 join 되게 처리
     if (!ws._roomId) join(ws, roomId);
     if (ws._roomId !== roomId) {
       console.log(`🔁 switch room id=${ws._id} ${ws._roomId} -> ${roomId}`);
@@ -126,6 +134,7 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
+    // 서버는 저장 안 하고 그대로 재브로드캐스트만 함
     const outObj = { type: "PING", roomId, payload: msg.payload };
     const out = JSON.stringify(outObj);
 
@@ -152,24 +161,21 @@ wss.on("connection", (ws, req) => {
 
   ws.on("error", (e) => {
     console.log(`💥 ws error id=${ws._id} err=${e?.message || e}`);
-  
+  });
 });
 
+// Render에서 반드시 listen 해야 함
 server.listen(PORT, () => {
   console.log("HTTP + WS server listening on", PORT);
 });
 
-function heartbeat() { this.isAlive = true; }
-
-wss.on("connection", (ws) => {
-  ws.isAlive = true;
-  ws.on("pong", heartbeat);
-});
-
-setInterval(() => {
+// 25초마다 ping -> pong 없으면 terminate (유령 연결 정리)
+const interval = setInterval(() => {
   wss.clients.forEach((ws) => {
     if (ws.isAlive === false) return ws.terminate();
     ws.isAlive = false;
     ws.ping();
   });
 }, 25000);
+
+wss.on("close", () => clearInterval(interval));
