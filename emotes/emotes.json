@@ -3,5 +3,5 @@
   { "id": "laugh",    "name": "웃음",   "emoji": "😂", "sound": "pop.wav" },
   { "id": "shock",    "name": "놀람",   "emoji": "😱", "sound": "boing.wav" },
   { "id": "heart",    "name": "하트",   "emoji": "❤️" },
-  { "id": "missing",  "name": "미아",   "image": "미아핑.gif", "sound": "missing.mp3",  "volume": 0.5, "duration": 3.6 }
+  { "id": "missing",  "name": "미아",   "image": "미아핑.gif", "sound": "missing.mp3",  "volume": 0.5, "duration": 1.8 }
 ]
