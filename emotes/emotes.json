@@ -1,0 +1,6 @@
+[
+  { "id": "thumbsup", "name": "좋아요", "emoji": "👍", "sound": "ding.wav" },
+  { "id": "laugh",    "name": "웃음",   "emoji": "😂", "sound": "pop.wav" },
+  { "id": "shock",    "name": "놀람",   "emoji": "😱", "sound": "boing.wav" },
+  { "id": "heart",    "name": "하트",   "emoji": "❤️" }
+]
