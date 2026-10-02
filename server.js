@@ -1,6 +1,6 @@
 /**
  * coco-ping-server (Render)
- * - 같은 roomId 안에서 PING 메시지를 모두에게 브로드캐스트
+ * - 같은 roomId 안에서 PING / EMOTE 메시지를 모두에게 브로드캐스트
  * - JOIN 메시지로 "접속자 수"를 미리 반영(핑 안 찍어도 방에 들어옴)
  * - /health 로 HTTP 헬스 체크 응답
  * - 메시지 저장 없음(브로드캐스트만)
@@ -11,6 +11,9 @@ import http from "http";
 import { WebSocketServer } from "ws";
 
 const PORT = Number(process.env.PORT || 10000);
+
+/** 중계할 메시지 타입 (CCPING: PING, CCEMOTE: EMOTE) */
+const RELAY_TYPES = new Set(["PING", "EMOTE"]);
 
 /** roomId -> Set<WebSocket> */
 const rooms = new Map();
@@ -54,8 +57,8 @@ const server = http.createServer((req, res) => {
   res.end("not found");
 });
 
-/** WebSocket (/ws) */
-const wss = new WebSocketServer({ server, path: "/ws" });
+/** WebSocket (/ws) — 메시지는 작으므로 64KB로 제한 */
+const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 64 * 1024 });
 
 /** pong 받으면 살아있다고 표시 */
 function heartbeat() {
@@ -111,8 +114,8 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
-    // PING만 처리 (다른 타입은 조용히 무시)
-    if (msg.type !== "PING") return;
+    // 중계 대상 타입만 처리 (다른 타입은 조용히 무시)
+    if (!RELAY_TYPES.has(msg.type)) return;
 
     // payload 검증
     if (!msg.payload || typeof msg.payload !== "object") {
@@ -120,7 +123,7 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
-    // PING만 보내도 자동 join 되게 처리
+    // JOIN 없이 보내도 자동 join 되게 처리
     if (!ws._roomId) join(ws, roomId);
     if (ws._roomId !== roomId) {
       console.log(`🔁 switch room id=${ws._id} ${ws._roomId} -> ${roomId}`);
@@ -135,11 +138,12 @@ wss.on("connection", (ws, req) => {
     }
 
     // 서버는 저장 안 하고 그대로 재브로드캐스트만 함
-    const outObj = { type: "PING", roomId, payload: msg.payload };
+    const outObj = { type: msg.type, roomId, payload: msg.payload };
+    if (typeof msg.senderId === "string") outObj.senderId = msg.senderId;
     const out = JSON.stringify(outObj);
 
     console.log(
-      `📨 recv PING id=${ws._id} room=${roomId} size=${set.size} ` +
+      `📨 recv ${msg.type} id=${ws._id} room=${roomId} size=${set.size} ` +
       `payloadKeys=${Object.keys(msg.payload).join(",")}`
     );
 
@@ -151,7 +155,7 @@ wss.on("connection", (ws, req) => {
       }
     }
 
-    console.log(`📤 broadcast room=${roomId} sent=${sent}/${set.size}`);
+    console.log(`📤 broadcast ${msg.type} room=${roomId} sent=${sent}/${set.size}`);
   });
 
   ws.on("close", (code, reason) => {
