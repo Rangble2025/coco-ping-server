@@ -3,7 +3,7 @@
   { "id": "laugh",    "name": "조롱",   "emoji": "🤪", "sound": "pop.wav" },
   { "id": "shock",    "name": "놀람",   "emoji": "😱", "sound": "boing.wav" },
   { "id": "heart",    "name": "하트",   "emoji": "❤️" },
-  { "id": "missing",  "name": "미아",   "image": "미아핑.gif", "sound": "missing.mp3", "size": 1.8 },
+  { "id": "missing",  "name": "미아",   "image": "미아핑.gif", "sound": "missing.mp3", "size": 3 },
   { "id": "skeleton",  "name": "해골",   "image": "무도 해골.png", "sound": "총소리.mp3",  "volume": 0.5, "duration": 1.8 },
   { "id": "여기가어디여", "name": "여기가어디여", "image": "여기가 어디여.png" },
   { "id": "난누구여긴어디", "name": "난누구여긴어디", "image": "난 누구 여긴 어디.png" },
